@@ -1,0 +1,18 @@
+services:
+  video-analysis:
+    build: .
+    volumes:
+      - ./app:/app
+      - ./app/input_videos:/app/input_videos
+      - ./app/output_results:/app/output_results
+    environment:
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    ports:
+      - "5000:5000"
+    runtime: nvidia
+    command: python3 /app/analyze_video.py

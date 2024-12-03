@@ -1,0 +1,18 @@
+opencv-python-headless
+torch>=1.7.0
+torchvision
+numpy>=1.22,<2.1
+moviepy
+numba==0.60.0  # Specify Numba 0.60.0 or above
+dlib
+librosa
+Pillow
+speechrecognition
+pydub
+textblob
+face_recognition
+cmake
+flask
+tensorflow
+pandas 
+scikit-learn
