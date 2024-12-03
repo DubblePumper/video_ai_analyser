@@ -74,4 +74,4 @@ RUN pip install flask
 EXPOSE 5000
 
 # Command to run your application
-CMD ["python", "./serve_images.py"]
+CMD ["python", "./trainaionimageanddescofpeople.py"]

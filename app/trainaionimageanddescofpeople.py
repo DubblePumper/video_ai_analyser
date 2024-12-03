@@ -7,14 +7,22 @@ import pandas as pd
 import os
 from PIL import Image
 import glob
-from torchvision.models import ResNet50_Weights  # Add this import
-import torch.hub
-from tqdm import tqdm  # Add this import
+from torchvision.models import ResNet50_Weights
+from tqdm import tqdm
+from sklearn.model_selection import train_test_split
 
-# Add this at the top of the file after imports
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Global variables for configuration
+LEARNING_RATE = 0.0001
+BATCH_SIZE = 32
+NUM_EPOCHS = 20
+MODEL_SAVE_DIR = 'saved_ai'
+MODEL_SAVE_PATH = os.path.join(MODEL_SAVE_DIR, 'person_recognition_model.pth')
 
-# Data preprocessing
+# Ensure the save directory exists
+if not os.path.exists(MODEL_SAVE_DIR):
+    os.makedirs(MODEL_SAVE_DIR)
+
+# Data preprocessing with simpler augmentation
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -23,135 +31,93 @@ transform = transforms.Compose([
 
 class PersonDataset(Dataset):
     def __init__(self, csv_file, img_dir, transform=None):
-        print(f"Loading dataset from {csv_file}")
         self.data = pd.read_csv(csv_file)
-        print(f"Found {len(self.data)} entries in CSV")
-        
         self.img_dir = img_dir
-        print(f"Looking for .jpg images in {os.path.abspath(img_dir)}")
-        if not os.path.exists(img_dir):
-            print(f"WARNING: Image directory does not exist! Creating it...")
-            os.makedirs(img_dir)
-        
         self.transform = transform
         self.valid_data = []
-        
-        # Filter only entries with existing .jpg images
-        for idx, row in self.data.iterrows():
+        for _, row in self.data.iterrows():
             name = row['Name'].replace(' ', '_')
             img_path = os.path.join(img_dir, f"{name}.jpg")
-            
             if os.path.exists(img_path):
                 self.valid_data.append((row['Name'], img_path))
-            else:
-                print(f"Image not found: {os.path.abspath(img_path)}")
-        
-        print(f"\nFound jpg files in directory:")
-        jpg_files = glob.glob(os.path.join(img_dir, "*.jpg"))
-        for file in jpg_files:
-            print(f"  - {os.path.basename(file)}")
-        
-        print(f"\nFound {len(self.valid_data)} valid images out of {len(jpg_files)} total jpg files")
-        
-        if len(self.valid_data) == 0:
-            raise ValueError(
-                "No valid images found! Please ensure:\n"
-                "1. The images are in .jpg format\n"
-                "2. Images are named exactly as firstname_lastname.jpg\n"
-                "3. The names in CSV match the image filenames\n"
-                f"4. Images are placed in: {os.path.abspath(img_dir)}"
-            )
-        
-        # Create name to index mapping
         self.name_to_idx = {name: idx for idx, (name, _) in enumerate(self.valid_data)}
-        
+
     def __len__(self):
         return len(self.valid_data)
     
     def __getitem__(self, idx):
         name, img_path = self.valid_data[idx]
         image = Image.open(img_path).convert('RGB')
-        
         if self.transform:
             image = self.transform(image)
-            
         label = self.name_to_idx[name]
         return image, label
 
     def get_num_classes(self):
-        return len(self.valid_data)
+        return len(self.name_to_idx)
+
+def evaluate_model(dataloader, model, criterion, device):
+    model.eval()
+    running_loss = 0.0
+    correct_predictions = 0
+    total_predictions = 0
+    with torch.no_grad():
+        for images, labels in dataloader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            correct_predictions += (predicted == labels).sum().item()
+            total_predictions += labels.size(0)
+    avg_loss = running_loss / len(dataloader)
+    accuracy = correct_predictions / total_predictions
+    return avg_loss, accuracy
 
 def train_model():
-    # Set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    dataset = PersonDataset(
+        csv_file='datasets/dataset.csv',
+        img_dir='input_images',
+        transform=transform
+    )
+    train_data, val_data = train_test_split(dataset.valid_data, test_size=0.2, random_state=42)
+    train_dataset = torch.utils.data.Subset(dataset, [dataset.valid_data.index(entry) for entry in train_data])
+    val_dataset = torch.utils.data.Subset(dataset, [dataset.valid_data.index(entry) for entry in val_data])
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     
-    try:
-        # Create dataset and dataloader with correct paths
-        dataset = PersonDataset(
-            csv_file=os.path.join(SCRIPT_DIR, 'datasets', 'dataset.csv'),
-            img_dir=os.path.join(SCRIPT_DIR, 'input_images'),
-            transform=transform
-        )
-        
-        if dataset.get_num_classes() == 0:
-            raise ValueError("Dataset is empty!")
-            
-        print(f"Dataset created successfully with {dataset.get_num_classes()} classes")
-        
-        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
-        
-        # Add download progress tracking
-        torch.hub.set_dir(os.path.join(SCRIPT_DIR, '.model_cache'))
-        print("Downloading/loading ResNet50 model weights...")
-        with tqdm(unit='B', unit_scale=True, unit_divisor=1024) as pbar:
-            def hook(t):
-                pbar.update(t.get_device())
-            torch.hub._PROGRESS_HOOKS = [hook]
-            
-            # Load pre-trained ResNet model with new weights parameter
-            model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-            
-        # Reset progress hooks
-        torch.hub._PROGRESS_HOOKS = []
-        
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, dataset.get_num_classes())
-        model = model.to(device)
-        
-        # Loss function and optimizer
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
-        
-        # Training loop
-        num_epochs = 10
-        for epoch in range(num_epochs):
-            model.train()
-            running_loss = 0.0
-            
-            for images, labels in dataloader:
-                images = images.to(device)
-                labels = labels.to(device)
-                
-                optimizer.zero_grad()
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                
-                running_loss += loss.item()
-                
-            epoch_loss = running_loss / len(dataloader)
-            print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
-        
-        # Update model save path
-        model_save_path = os.path.join(SCRIPT_DIR, 'person_recognition_model.pth')
-        torch.save(model.state_dict(), model_save_path)
-        print(f"Training complete! Model saved as '{model_save_path}'")
+    model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, dataset.get_num_classes())
+    model = model.to(device)
     
-    except Exception as e:
-        print(f"Error during training: {str(e)}")
-        raise
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+
+    for epoch in range(NUM_EPOCHS):
+        model.train()
+        running_loss = 0.0
+        correct_predictions = 0
+        total_predictions = 0
+        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS}"):
+            images, labels = images.to(device), labels.to(device)
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+            _, predicted = torch.max(outputs, 1)
+            correct_predictions += (predicted == labels).sum().item()
+            total_predictions += labels.size(0)
+        train_loss = running_loss / len(train_loader)
+        train_accuracy = correct_predictions / total_predictions
+        val_loss, val_accuracy = evaluate_model(val_loader, model, criterion, device)
+        print(f"Epoch {epoch+1}/{NUM_EPOCHS}: Train Loss: {train_loss:.4f}, Train Acc: {train_accuracy:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_accuracy:.4f}")
+        scheduler.step()
+        torch.save(model.state_dict(), MODEL_SAVE_PATH)
 
 if __name__ == "__main__":
     train_model()
