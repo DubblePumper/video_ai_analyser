@@ -1,5 +1,5 @@
 opencv-python-headless
-torch>=1.7.0
+torch==2.5.1+cu124
 torchvision
 numpy>=1.22,<2.1
 moviepy
@@ -16,3 +16,5 @@ flask
 tensorflow
 pandas 
 scikit-learn
+facenet_pytorch
+torchaudio==2.5.1+cu124
