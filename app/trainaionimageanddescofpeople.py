@@ -67,8 +67,8 @@ def train_model():
     try:
         # Create dataset and dataloader
         dataset = PersonDataset(
-            csv_file='datasets/dataset.csv',  # Remove 'app/' prefix
-            img_dir='input_images',           # Remove 'app/' prefix
+            csv_file='app/datasets/dataset.csv',  # Remove 'app/' prefix
+            img_dir='app/input_images',           # Remove 'app/' prefix
             transform=transform
         )
         
