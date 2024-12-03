@@ -1,2 +1,4 @@
 /app/input_videos/
 /app/saved_ai/
+/app/.model_cache/checkpoints\
+/app/pretrainedai/
