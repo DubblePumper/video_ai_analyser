@@ -71,25 +71,23 @@ class PersonDataset(Dataset):
 
 # Model
 def build_model(num_classes):
-    # Laad het voorgetrainde VGGFace2-model
+    # Load the pre-trained VGGFace2 model
     model = InceptionResnetV1(pretrained='vggface2', classify=False).to(DEVICE)
     
-    # Vervang de classificatielaag
-    num_ftrs = model.last_linear.in_features
+    # Replace the classification layer
+    num_ftrs = model.last_linear.in_features  # Get the number of input features for the last layer
     model.last_linear = nn.Linear(num_ftrs, num_classes).to(DEVICE)
     
-    # Zet batchnorm statistieken uit om de fout te vermijden
-    for m in model.modules():
-        if isinstance(m, nn.BatchNorm2d):
-            m.track_running_stats = False
-            m.running_mean = torch.zeros_like(m.running_mean)
-            m.running_var = torch.ones_like(m.running_var)
-    
-    return model
+    # Replace the last batch normalization layer
+    model.last_bn = nn.BatchNorm1d(num_classes).to(DEVICE)
 
-# Model bouwen en batchnorm uitschakelen
-dataset = PersonDataset(CSV_PATH, IMG_DIR, transform=transform)
-model = build_model(dataset.num_classes)  # Gebruik de instantie van dataset
+    # Ensure batch normalization layers are in evaluation mode
+    for m in model.modules():
+        if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+            m.eval()
+            m.track_running_stats = False
+
+    return model
 
 # Train functie
 def train_model():
