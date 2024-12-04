@@ -22,8 +22,9 @@ NUM_EPOCHS = 20
 IMG_SIZE = 160  # VGGFace2 gebruikt 160x160 afbeeldingen
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ENABLE_RANDOMIZATION = False  # Boolean to enable or disable randomization
-NUM_PREDICTIONS = 25  # Global variable for the number of predictions
+NUM_PREDICTIONS = 1  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
+ENABLE_JSON_LOGGING = True  # Global variable to enable or disable JSON logging
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -182,6 +183,8 @@ def calculate_bonus(predictions, true_label):
     return 0.0  # No bonus if no prediction is within the max distance
 
 def load_prediction_log():
+    if not ENABLE_JSON_LOGGING:
+        return {}
     if os.path.exists(LOG_FILE_PATH):
         try:
             with open(LOG_FILE_PATH, 'r') as log_file:
@@ -192,10 +195,14 @@ def load_prediction_log():
     return {}
 
 def save_prediction_log(log_data):
+    if not ENABLE_JSON_LOGGING:
+        return
     with open(LOG_FILE_PATH, 'w') as log_file:
         json.dump(log_data, log_file, indent=4)
 
 def log_predictions(log_data, img_name, true_label, predictions):
+    if not ENABLE_JSON_LOGGING:
+        return
     is_correct = true_label in predictions
     predictions_tensor = torch.tensor(predictions)
     
@@ -216,6 +223,8 @@ def log_predictions(log_data, img_name, true_label, predictions):
         }
 
 def get_previous_predictions(img_name):
+    if not ENABLE_JSON_LOGGING:
+        return []
     log_data = load_prediction_log()
     if img_name in log_data:
         return log_data[img_name]['predictions']
@@ -291,15 +300,15 @@ def train_model():
                 log_predictions(log_data, img_names[j], labels[j].item(), predictions[:, j].cpu().numpy())
 
             # Log batch progress
-            if (i % 10 == 0):  # Log every 10 batches
-                print(f"Batch [{i}/{len(dataloader)}], Loss: {loss.item()}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
+            if (i % BATCH_SIZE == 0):  # Log every amount of batches batches
+                print(f"Epoch [{epoch + 1}] | Batch [{i}/{len(dataloader)}], Loss: {loss.item()}, Accuracy: {accuracy:.10f}, Bonus: {total_bonus / total:.4f}")
                 print(f"Correct guesses: {correct_guesses}, Incorrect guesses: {incorrect_guesses}")
 
             # Visualiseer de afbeeldingen en de voorspellingen
-            if ENABLE_REALTIME_VISUALIZATION and (i % 5 == 0):  # Update de plot om de 5e batch
+            if ENABLE_REALTIME_VISUALIZATION and (i % BATCH_SIZE == 0):  # Update de plot om de 5e batch
                 show_images_realtime(images, labels, predictions, img_names, epoch, fig, axes)
 
-        print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
+        print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.10f}, Bonus: {total_bonus / total:.4f}")
 
         # Bewaar de log data na elke epoch
         save_prediction_log(log_data)
