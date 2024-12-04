@@ -11,17 +11,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 import warnings
+import json
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 # Configuratie
 LEARNING_RATE = 0.001
-BATCH_SIZE = 20
+BATCH_SIZE = 50
 NUM_EPOCHS = 20
 IMG_SIZE = 160  # VGGFace2 gebruikt 160x160 afbeeldingen
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ENABLE_RANDOMIZATION = False  # Boolean to enable or disable randomization
 NUM_PREDICTIONS = 50  # Global variable for the number of predictions
+ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -29,10 +31,11 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(SCRIPT_DIR, 'datasets', 'dataset.csv')
 IMG_DIR = os.path.join(SCRIPT_DIR, 'input_images')
 MODEL_SAVE_PATH = os.path.join(SCRIPT_DIR, 'saved_ai', 'person_recognition_model_vggface2.pth')
+LOG_FILE_PATH = os.path.join(SCRIPT_DIR, 'prediction_log.json')
 os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
 
 # Transformaties (meer randomisatie toegevoegd)
-if (ENABLE_RANDOMIZATION):
+if ENABLE_RANDOMIZATION:
     transform = transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(30),
@@ -79,14 +82,10 @@ class PersonDataset(Dataset):
         name = row['Name']
         label = self.labels[name]  # Zorgt ervoor dat labels opnieuw worden toegewezen
 
-        # Controleer of het label geldig is
-        if (label >= self.num_classes):
-            raise ValueError(f"Invalid label {label} for name {name}")
-
         img_name = f"{name.replace(' ', '_')}.jpg"
         img_path = os.path.join(self.img_dir, img_name)
         image = Image.open(img_path).convert('RGB')
-        if (self.transform):
+        if self.transform:
             image = self.transform(image)
         return image, label, img_name
 
@@ -117,7 +116,7 @@ class CustomInceptionResnetV1(InceptionResnetV1):
         x = self.dropout(x)
         features = self.feature_layer(x)  # Reduce feature dimension to 512
 
-        if (return_embeddings):
+        if return_embeddings:
             return features
         else:
             return self.classifier(features)
@@ -130,14 +129,13 @@ def build_model(num_classes):
 
     # Zet batchnorm in evaluatiemodus
     for m in model.modules():
-        if (isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d)):
+        if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
             m.eval()
             m.track_running_stats = False
 
     return model
 
-# Functie om batchafbeeldingen en hun voorspellingen te visualiseren
-def show_images_realtime(images, labels, predictions, img_names, epoch, fig):
+def show_images_realtime(images, labels, predictions, img_names, epoch, fig, axes):
     # De-normaliseer de afbeeldingen
     mean = torch.tensor([0.485, 0.456, 0.406]).to(images.device)
     std = torch.tensor([0.229, 0.224, 0.225]).to(images.device)
@@ -147,25 +145,18 @@ def show_images_realtime(images, labels, predictions, img_names, epoch, fig):
     images = images.cpu().numpy()
     grid = np.transpose(images, (0, 2, 3, 1))  # HWC (Height, Width, Channels)
 
-    # Verwijder alle bestaande subplots in de figuur
-    fig.clf()
-
-    # Maak een subplot voor elke afbeelding in de batch
-    num_images = len(images)
-    num_cols = 4
-    num_rows = (num_images + num_cols - 1) // num_cols  # Bepaal het aantal rijen dynamisch
-
-    fig.set_size_inches(num_cols * 3, num_rows * 3)  # Pas de figuur grootte aan
+    num_images = min(len(images), len(axes))  # Ensure we don't exceed the number of axes
 
     for i in range(num_images):
-        ax = fig.add_subplot(num_rows, num_cols, i + 1)
+        ax = axes[i]
+        ax.clear()
         ax.imshow(grid[i])
 
         true_label = labels[i].item()
         predicted_labels = predictions[:, i].cpu().numpy()
 
         # Bepaal of de voorspelling correct of incorrect is
-        is_correct = "Correct" if (true_label in predicted_labels) else "Incorrect"
+        is_correct = "Correct" if true_label in predicted_labels else "Incorrect"
 
         # Zet elke voorspelling naast elkaar
         predicted_labels_str = " ".join(map(str, predicted_labels))
@@ -173,16 +164,59 @@ def show_images_realtime(images, labels, predictions, img_names, epoch, fig):
         ax.set_title(f"True: {true_label}\nPred: {predicted_labels_str}\n{is_correct}", fontsize=8)
         ax.axis('off')
 
+    for i in range(num_images, len(axes)):
+        axes[i].axis('off')
+
     plt.tight_layout()
-    plt.draw()  # Update de huidige figuur
-    plt.pause(0.1)  # Zorg ervoor dat de update zichtbaar is
+    fig.canvas.draw_idle()  # Efficiently update the figure
+    plt.pause(0.001)  # Zorg ervoor dat de update zichtbaar is
 
 def calculate_bonus(predictions, true_label):
-    # Calculate the bonus based on the distance from the true label
+    # Bereken de bonus op basis van de afstand van de voorspellingen tot het juiste label
     distances = torch.abs(predictions - true_label)
     max_distance = torch.max(distances).item()
     bonuses = 1 - (distances.float() / max_distance)
     return bonuses.max().item()  # Return the maximum bonus for the closest prediction
+
+def load_prediction_log():
+    if os.path.exists(LOG_FILE_PATH):
+        try:
+            with open(LOG_FILE_PATH, 'r') as log_file:
+                return json.load(log_file)
+        except json.JSONDecodeError:
+            print("Error decoding JSON log file. Starting with an empty log.")
+            return {}
+    return {}
+
+def save_prediction_log(log_data):
+    with open(LOG_FILE_PATH, 'w') as log_file:
+        json.dump(log_data, log_file, indent=4)
+
+def log_predictions(log_data, img_name, true_label, predictions):
+    is_correct = true_label in predictions
+    predictions_tensor = torch.tensor(predictions)
+    
+    # Vind de voorspelling die het dichtst bij het juiste label ligt
+    closest_prediction = predictions_tensor[torch.argmin(torch.abs(predictions_tensor - true_label))].item()
+
+    if img_name in log_data:
+        # Controleer of de huidige voorspelling dichterbij komt dan de vorige
+        previous_best = log_data[img_name]['predictions'][0]  # Aangenomen dat de eerste voorspelling de beste is
+        if abs(closest_prediction - true_label) < abs(previous_best - true_label):
+            log_data[img_name]['predictions'][0] = closest_prediction  # Update met nieuwe beste voorspelling
+        log_data[img_name]['is_correct'] = is_correct or log_data[img_name]['is_correct']
+    else:
+        log_data[img_name] = {
+            'true_label': true_label,
+            'predictions': [closest_prediction],
+            'is_correct': is_correct
+        }
+
+def get_previous_predictions(img_name):
+    log_data = load_prediction_log()
+    if img_name in log_data:
+        return log_data[img_name]['predictions']
+    return []
 
 # Trainen van het model
 def train_model():
@@ -197,7 +231,12 @@ def train_model():
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # Maak de figuur voor visualisatie
-    fig = plt.figure(figsize=(16, 8))
+    if ENABLE_REALTIME_VISUALIZATION:
+        fig, axes = plt.subplots(4, 4, figsize=(16, 8))
+        axes = axes.flatten()
+
+    # Laad de log data
+    log_data = load_prediction_log()
 
     # Begin training
     for epoch in range(NUM_EPOCHS):
@@ -239,18 +278,25 @@ def train_model():
             accuracy = correct / total
 
             # Calculate bonus per image
+            correct_guesses = (most_common_predictions == labels).sum().item()
+            incorrect_guesses = labels.size(0) - correct_guesses
             for j in range(len(labels)):
                 total_bonus += calculate_bonus(predictions[:, j], labels[j])
+                log_predictions(log_data, img_names[j], labels[j].item(), predictions[:, j].cpu().numpy())
 
             # Log batch progress
             if (i % 10 == 0):  # Log every 10 batches
                 print(f"Batch [{i}/{len(dataloader)}], Loss: {loss.item()}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
+                print(f"Correct guesses: {correct_guesses}, Incorrect guesses: {incorrect_guesses}")
 
             # Visualiseer de afbeeldingen en de voorspellingen
-            if (i % 5 == 0):  # Update de plot om de 5e batch
-                show_images_realtime(images, labels, predictions, img_names, epoch, fig)
+            if ENABLE_REALTIME_VISUALIZATION and (i % 5 == 0):  # Update de plot om de 5e batch
+                show_images_realtime(images, labels, predictions, img_names, epoch, fig, axes)
 
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
+
+    # Bewaar de log data na training
+    save_prediction_log(log_data)
 
     # Bewaar het model
     torch.save(model.state_dict(), MODEL_SAVE_PATH)
