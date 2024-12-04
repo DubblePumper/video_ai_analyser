@@ -3,6 +3,7 @@
 An AI-powered video content analysis tool.
 
 ## Project Structure
+```bash
 VideoAIAnalyzer/
 ├── app/                                  # Main application directory
 │   ├── __pycache__/                     # Python cache directory
@@ -35,6 +36,7 @@ VideoAIAnalyzer/
 ├── README.md                            # Project documentation (this file)
 ├── requirements.txt                      # Python package dependencies
 └── .gitattributes                       # Git attributes configuration
+```
 
 ## Key Components
 
