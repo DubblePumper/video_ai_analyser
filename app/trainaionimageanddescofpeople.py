@@ -16,13 +16,13 @@ import json
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 # Configuratie
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
 BATCH_SIZE = 50
 NUM_EPOCHS = 20
 IMG_SIZE = 160  # VGGFace2 gebruikt 160x160 afbeeldingen
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ENABLE_RANDOMIZATION = False  # Boolean to enable or disable randomization
-NUM_PREDICTIONS = 50  # Global variable for the number of predictions
+NUM_PREDICTIONS = 500  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
