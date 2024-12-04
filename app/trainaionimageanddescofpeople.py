@@ -21,8 +21,8 @@ BATCH_SIZE = 20
 NUM_EPOCHS = 20
 IMG_SIZE = 160  # VGGFace2 gebruikt 160x160 afbeeldingen
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-ENABLE_RANDOMIZATION = False  # Boolean to enable or disable randomization
-NUM_PREDICTIONS = 1  # Global variable for the number of predictions
+ENABLE_RANDOMIZATION = True  # Boolean to enable or disable randomization
+NUM_PREDICTIONS = 100  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 ENABLE_JSON_LOGGING = True  # Global variable to enable or disable JSON logging
 
@@ -36,23 +36,40 @@ LOG_FILE_PATH = os.path.join(SCRIPT_DIR, 'prediction_log.json')
 os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
 
 # Transformaties (meer randomisatie toegevoegd)
-if ENABLE_RANDOMIZATION:
-    transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(30),
-        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.4),
-        transforms.RandomAffine(30, shear=10),
-        transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalisatie voor VGGFace2
-    ])
-else:
-    transform = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalisatie voor VGGFace2
-    ])
+def get_transform(enable_randomization, phase):
+    if enable_randomization:
+        if phase == 1:
+            return transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.Resize((IMG_SIZE, IMG_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+        elif phase == 2:
+            return transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(30),
+                transforms.Resize((IMG_SIZE, IMG_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+        else:
+            return transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomRotation(30),
+                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.4),
+                transforms.RandomAffine(30, shear=10),
+                transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),
+                transforms.Resize((IMG_SIZE, IMG_SIZE)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalisatie voor VGGFace2
+            ])
+    else:
+        return transforms.Compose([
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalisatie voor VGGFace2
+        ])
 
 # Dataset
 class PersonDataset(Dataset):
@@ -230,9 +247,21 @@ def get_previous_predictions(img_name):
         return log_data[img_name]['predictions']
     return []
 
+# Function to save the model state
+def save_model_state(model, path):
+    torch.save(model.state_dict(), path)
+
+# Function to load the model state
+def load_model_state(model, path):
+    if os.path.exists(path):
+        model.load_state_dict(torch.load(path))
+        model.train()
+
 # Trainen van het model
 def train_model():
     # Laad dataset
+    phase = 1  # Start with phase 1 of randomization
+    transform = get_transform(ENABLE_RANDOMIZATION, phase)
     dataset = PersonDataset(CSV_PATH, IMG_DIR, transform)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
 
@@ -253,9 +282,7 @@ def train_model():
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]")
 
         # Load model state if it exists
-        if os.path.exists(MODEL_SAVE_PATH):
-            model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
-            model.train()
+        load_model_state(model, MODEL_SAVE_PATH)
 
         running_loss = 0.0
         correct = 0
@@ -302,7 +329,7 @@ def train_model():
             # Log batch progress
             if (i % BATCH_SIZE == 0):  # Log every amount of batches batches
                 print(f"Epoch [{epoch + 1}] | Batch [{i}/{len(dataloader)}], Loss: {loss.item()}, Accuracy: {accuracy:.10f}, Bonus: {total_bonus / total:.4f}")
-                print(f"Correct guesses: {correct_guesses}, Incorrect guesses: {incorrect_guesses}")
+                print(f"{correct_guesses} correct / {incorrect_guesses} incorrect - total guesses: {correct_guesses + incorrect_guesses}")
 
             # Visualiseer de afbeeldingen en de voorspellingen
             if ENABLE_REALTIME_VISUALIZATION and (i % BATCH_SIZE == 0):  # Update de plot om de 5e batch
@@ -314,7 +341,14 @@ def train_model():
         save_prediction_log(log_data)
 
         # Bewaar het model na elke epoch
-        torch.save(model.state_dict(), MODEL_SAVE_PATH)
+        save_model_state(model, MODEL_SAVE_PATH)
+
+        # Gradually increase the randomization phase
+        if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // 3) == 0:
+            phase += 1
+            transform = get_transform(ENABLE_RANDOMIZATION, phase)
+            dataset = PersonDataset(CSV_PATH, IMG_DIR, transform)
+            dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
 
 if __name__ == '__main__':
     train_model()
