@@ -17,12 +17,12 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 
 # Configuratie
 LEARNING_RATE = 0.0001
-BATCH_SIZE = 50
+BATCH_SIZE = 20
 NUM_EPOCHS = 20
 IMG_SIZE = 160  # VGGFace2 gebruikt 160x160 afbeeldingen
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ENABLE_RANDOMIZATION = False  # Boolean to enable or disable randomization
-NUM_PREDICTIONS = 500  # Global variable for the number of predictions
+NUM_PREDICTIONS = 25  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -175,7 +175,7 @@ def calculate_bonus(predictions, true_label):
     # Bereken de bonus op basis van de afstand van de voorspellingen tot het juiste label
     distances = torch.abs(predictions - true_label)
     min_distance = torch.min(distances).item()
-    if min_distance <= 200:
+    if (min_distance <= 200):
         max_distance = torch.max(distances).item()
         bonuses = 1 - (distances.float() / max_distance)
         return bonuses.max().item()  # Return the maximum bonus for the closest prediction
@@ -245,7 +245,7 @@ def train_model():
 
         # Load model state if it exists
         if os.path.exists(MODEL_SAVE_PATH):
-            model.load_state_dict(torch.load(MODEL_SAVE_PATH))
+            model.load_state_dict(torch.load(MODEL_SAVE_PATH, weights_only=True))
             model.train()
 
         running_loss = 0.0
