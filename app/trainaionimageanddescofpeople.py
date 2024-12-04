@@ -298,7 +298,7 @@ def train_model():
 
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
 
-        # Bewaar de log data na training
+        # Bewaar de log data na elke epoch
         save_prediction_log(log_data)
 
         # Bewaar het model na elke epoch
