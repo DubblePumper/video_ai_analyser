@@ -174,9 +174,12 @@ def show_images_realtime(images, labels, predictions, img_names, epoch, fig, axe
 def calculate_bonus(predictions, true_label):
     # Bereken de bonus op basis van de afstand van de voorspellingen tot het juiste label
     distances = torch.abs(predictions - true_label)
-    max_distance = torch.max(distances).item()
-    bonuses = 1 - (distances.float() / max_distance)
-    return bonuses.max().item()  # Return the maximum bonus for the closest prediction
+    min_distance = torch.min(distances).item()
+    if min_distance <= 200:
+        max_distance = torch.max(distances).item()
+        bonuses = 1 - (distances.float() / max_distance)
+        return bonuses.max().item()  # Return the maximum bonus for the closest prediction
+    return 0.0  # No bonus if no prediction is within the max distance
 
 def load_prediction_log():
     if os.path.exists(LOG_FILE_PATH):
