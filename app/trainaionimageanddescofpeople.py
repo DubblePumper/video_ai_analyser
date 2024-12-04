@@ -225,8 +225,6 @@ def train_model():
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, pin_memory=True)
 
     model = build_model(dataset.num_classes)
-    model.train()
-
     criterion = nn.CrossEntropyLoss()  # Gebruik CrossEntropyLoss voor eenvoud
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
@@ -241,6 +239,11 @@ def train_model():
     # Begin training
     for epoch in range(NUM_EPOCHS):
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}]")
+
+        # Load model state if it exists
+        if os.path.exists(MODEL_SAVE_PATH):
+            model.load_state_dict(torch.load(MODEL_SAVE_PATH))
+            model.train()
 
         running_loss = 0.0
         correct = 0
@@ -295,11 +298,11 @@ def train_model():
 
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.4f}, Bonus: {total_bonus / total:.4f}")
 
-    # Bewaar de log data na training
-    save_prediction_log(log_data)
+        # Bewaar de log data na training
+        save_prediction_log(log_data)
 
-    # Bewaar het model
-    torch.save(model.state_dict(), MODEL_SAVE_PATH)
+        # Bewaar het model na elke epoch
+        torch.save(model.state_dict(), MODEL_SAVE_PATH)
 
 if __name__ == '__main__':
     train_model()
