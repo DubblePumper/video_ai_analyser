@@ -25,6 +25,7 @@ ENABLE_RANDOMIZATION = True  # Boolean to enable or disable randomization
 NUM_PREDICTIONS = 100  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 ENABLE_JSON_LOGGING = True  # Global variable to enable or disable JSON logging
+GRADUATION_RANDOMAZTION_AMOUNT = 5  # Gradually increase the randomization amount
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -347,7 +348,7 @@ def train_model():
         print(f"Saved model state to {MODEL_SAVE_PATH}")
 
         # Gradually increase the randomization phase
-        if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // 3) == 0:
+        if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // GRADUATION_RANDOMAZTION_AMOUNT) == 0:
             phase += 1
             transform = get_transform(ENABLE_RANDOMIZATION, phase)
             dataset = PersonDataset(CSV_PATH, IMG_DIR, transform)

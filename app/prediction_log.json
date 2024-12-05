@@ -11433,9 +11433,9 @@
     "Elan_Kane.jpg": {
         "true_label": 7538,
         "predictions": [
-            7549
+            7538
         ],
-        "is_correct": false
+        "is_correct": true
     },
     "Nikoletta.jpg": {
         "true_label": 6524,
