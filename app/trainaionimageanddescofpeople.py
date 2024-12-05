@@ -25,11 +25,11 @@ ENABLE_RANDOMIZATION = True  # Boolean to enable or disable randomization
 NUM_PREDICTIONS = 100  # Global variable for the number of predictions
 ENABLE_REALTIME_VISUALIZATION = False  # Global variable to enable or disable real-time visualization
 ENABLE_JSON_LOGGING = False  # Global variable to enable or disable JSON logging
-GRADUATION_RANDOMAZTION_AMOUNT = 5  # Gradually increase the randomization amount
+GRADUATION_RANDOMIZATION_AMOUNT = 5  # Gradually increase the randomization amount
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Paden
+# Paths
 CSV_PATH = os.path.join(SCRIPT_DIR, 'datasets', 'dataset.csv')
 IMG_DIR = os.path.join(SCRIPT_DIR, 'input_images')
 MODEL_SAVE_PATH = os.path.join(SCRIPT_DIR, 'saved_ai', 'person_recognition_model_vggface2.pth')
@@ -63,7 +63,7 @@ def get_transform(enable_randomization, phase):
                 transforms.RandomResizedCrop(IMG_SIZE, scale=(0.8, 1.0)),
                 transforms.Resize((IMG_SIZE, IMG_SIZE)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalisatie voor VGGFace2
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),  # Normalization for VGGFace2
             ])
     else:
         return transforms.Compose([
@@ -99,7 +99,7 @@ class PersonDataset(Dataset):
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
         name = row['Name']
-        label = self.labels[name]  # Zorgt ervoor dat labels opnieuw worden toegewezen
+        label = self.labels[name]  # Ensures that labels are reassigned
 
         img_name = f"{name.replace(' ', '_')}.jpg"
         img_path = os.path.join(self.img_dir, img_name)
@@ -146,7 +146,7 @@ def build_model(num_classes):
     model.classifier = nn.Linear(model.feature_dim, num_classes).to(DEVICE)
     model.last_bn = nn.BatchNorm1d(num_classes).to(DEVICE)
 
-    # Zet batchnorm in evaluatiemodus
+    # Set batchnorm to evaluation mode
     for m in model.modules():
         if isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
             m.eval()
@@ -155,7 +155,7 @@ def build_model(num_classes):
     return model
 
 def show_images_realtime(images, labels, predictions, img_names, epoch, fig, axes):
-    # De-normaliseer de afbeeldingen
+    # De-normalize the images
     mean = torch.tensor([0.485, 0.456, 0.406]).to(images.device)
     std = torch.tensor([0.229, 0.224, 0.225]).to(images.device)
     images = images * std[None, :, None, None] + mean[None, :, None, None]
@@ -174,10 +174,10 @@ def show_images_realtime(images, labels, predictions, img_names, epoch, fig, axe
         true_label = labels[i].item()
         predicted_labels = predictions[:, i].cpu().numpy()
 
-        # Bepaal of de voorspelling correct of incorrect is
+        # Determine if the prediction is correct or incorrect
         is_correct = "Correct" if true_label in predicted_labels else "Incorrect"
 
-        # Zet elke voorspelling naast elkaar
+        # Place each prediction side by side
         predicted_labels_str = " ".join(map(str, predicted_labels))
 
         ax.set_title(f"True: {true_label}\nPred: {predicted_labels_str}\n{is_correct}", fontsize=8)
@@ -191,7 +191,7 @@ def show_images_realtime(images, labels, predictions, img_names, epoch, fig, axe
     plt.pause(0.001)  # Zorg ervoor dat de update zichtbaar is
 
 def calculate_bonus(predictions, true_label):
-    # Bereken de bonus op basis van de afstand van de voorspellingen tot het juiste label
+    # Calculate the bonus based on the distance of the predictions to the correct label
     distances = torch.abs(predictions - true_label)
     min_distance = torch.min(distances).item()
     if (min_distance <= 200):
@@ -329,12 +329,12 @@ def train_model():
                 log_predictions(log_data, img_names[j], labels[j].item(), predictions[:, j].cpu().numpy())
 
             # Log batch progress
-            if (i % BATCH_SIZE == 0):  # Log every amount of batches batches
+            if (i % BATCH_SIZE == 0):  # Log progress every batch
                 print(f"Epoch [{epoch + 1}] | Batch [{i}/{len(dataloader)}], Loss: {loss.item()}, Accuracy: {accuracy:.10f}, Bonus: {total_bonus / total:.4f}")
                 print(f"{correct_guesses} correct / {incorrect_guesses} incorrect - total guesses: {correct_guesses + incorrect_guesses}")
 
             # Visualiseer de afbeeldingen en de voorspellingen
-            if ENABLE_REALTIME_VISUALIZATION and (i % BATCH_SIZE == 0):  # Update de plot om de 5e batch
+            if ENABLE_REALTIME_VISUALIZATION and (i % BATCH_SIZE == 0):  # Update the plot every batch
                 show_images_realtime(images, labels, predictions, img_names, epoch, fig, axes)
 
         print(f"Epoch [{epoch + 1}/{NUM_EPOCHS}], Loss: {running_loss / len(dataloader)}, Accuracy: {accuracy:.10f}, Bonus: {total_bonus / total:.4f}")
@@ -348,7 +348,7 @@ def train_model():
         print(f"Saved model state to {MODEL_SAVE_PATH}")
 
         # Gradually increase the randomization phase
-        if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // GRADUATION_RANDOMAZTION_AMOUNT) == 0:
+        if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // GRADUATION_RANDOMIZATION_AMOUNT) == 0:
             phase += 1
             transform = get_transform(ENABLE_RANDOMIZATION, phase)
             dataset = PersonDataset(CSV_PATH, IMG_DIR, transform)
