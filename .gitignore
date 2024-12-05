@@ -1,4 +1,3 @@
-/app/input_videos/
-/app/saved_ai/
+/app/datasets/test/videos/
 /app/.model_cache/checkpoints/
-/app/pretrainedai/
+/app/ai_things/
