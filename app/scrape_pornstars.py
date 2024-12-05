@@ -3,10 +3,9 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import os
-import re
+import time
 from PIL import Image
 import concurrent.futures
-import time
 
 def get_pornhub_performers(max_performers=15000):
     performers = []
@@ -92,50 +91,9 @@ def get_pornhub_performers(max_performers=15000):
 
     return performers
 
-def get_iafd_details(performer_name):
-    formatted_name = performer_name.replace(' ', '+')
-    scraper = cloudscraper.create_scraper()
-    search_url = f"https://www.iafd.com/results.asp?searchtype=comprehensive&searchstring={formatted_name}"
-    try:
-        response = scraper.get(search_url)
-        response.raise_for_status()
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        return None
-    soup = BeautifulSoup(response.content, 'html.parser')
-
-    for link in soup.find_all('a', href=True):
-        if '/person.rme/id=' in link['href']:
-            performer_url = 'https://www.iafd.com' + link['href']
-            try:
-                performer_response = scraper.get(performer_url)
-                performer_response.raise_for_status()
-            except requests.exceptions.RequestException as e:
-                print(f"Request failed: {e}")
-                continue
-            performer_soup = BeautifulSoup(performer_response.content, 'html.parser')
-
-            details = {}
-            headshot_div = performer_soup.find('div', id='headshot')
-            if headshot_div:
-                img_tag = headshot_div.find('img')
-                if img_tag and 'src' in img_tag.attrs:
-                    details['image_url'] = img_tag['src']
-
-            # Verzamel biografische gegevens uit de "vitalbox"
-            vitalbox = performer_soup.find('div', id='vitalbox')
-            if vitalbox:
-                bioheadings = vitalbox.find_all('p', class_='bioheading')
-                biodata = vitalbox.find_all('p', class_='biodata')
-                for heading, data in zip(bioheadings, biodata):
-                    details[heading.text.strip()] = data.text.strip()
-
-            return details
-
-    return None
-
 def download_and_optimize_image(url, save_path):
     try:
+        print(f"Attempting to download image: {url}")  # Log de poging om de afbeelding te downloaden
         scraper = cloudscraper.create_scraper()
         response = scraper.get(url, stream=True)
         if response.status_code == 200:
@@ -147,10 +105,11 @@ def download_and_optimize_image(url, save_path):
             with Image.open(save_path) as img:
                 img = img.convert("RGB")
                 img.save(save_path, "JPEG", quality=85, optimize=True)
+            print(f"Downloaded and optimized image: {url}")
         else:
-            print(f"Failed to download image from {url}")
+            print(f"Failed to download image from {url}, status code: {response.status_code}")
     except Exception as e:
-        print(f"Error downloading image: {e}")
+        print(f"Error downloading image from {url}: {e}")
 
 def main():
     max_performers = 15000
@@ -160,6 +119,7 @@ def main():
 
     # Controleer en maak de outputmap indien nodig
     if not os.path.exists(output_dir):
+        print(f"Creating output directory: {output_dir}")
         os.makedirs(output_dir)
 
     data = []
@@ -171,35 +131,23 @@ def main():
             name = performer['name']
             img_url = performer['img_url']
 
+            # Afbeelding downloaden en optimaliseren
             save_path = os.path.join(output_dir, f"{name.replace(' ', '_')}.jpg")
             futures[executor.submit(download_and_optimize_image, img_url, save_path)] = name
 
-            # Haal extra details op van IAFD
-            iafd_details = get_iafd_details(name)
-            if iafd_details:
-                iafd_details['name'] = name
-                iafd_details['pornhub_img_url'] = img_url
-                data.append(iafd_details)
-            else:
-                print(f"Performer {name} not found on IAFD. Skipping.")
+            data.append({"name": name, "img_url": img_url})
 
-        # Verwerk de resultaten van de threads
+        # Wacht totdat alle downloads en verwerkingen zijn voltooid
         for future in concurrent.futures.as_completed(futures):
             name = futures[future]
             try:
                 future.result()
-                print(f"Downloaded and optimized image for {name}")
             except Exception as e:
                 print(f"Error processing {name}: {e}")
 
-    # Sla de verzamelde gegevens op in een JSON-bestand
-    try:
-        with open(json_path, 'w', encoding='utf-8') as json_file:
-            json.dump(data, json_file, ensure_ascii=False, indent=4)
-    except IOError as e:
-        print(f"Error saving JSON file: {e}")
+    # Sla verzamelde gegevens op in een JSON bestand
+    with open(json_path, 'w', encoding='utf-8') as json_file:
+        json.dump(data, json_file, ensure_ascii=False, indent=4)
 
-    print(f"Data collection complete. JSON saved at {json_path}")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
