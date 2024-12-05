@@ -2,6 +2,39 @@
 
 An AI-powered video content analysis tool.
 
+## TODO
+bra size Recognition see:
+- https://github.com/gg46power/Oppai-dataset
+- https://github.com/samiurprapon/BraSizePrediction
+
+# Height and weght Recognition see:
+- https://github.com/canaltinigne/HeightWeightFinder
+
+# cloth Recognition see:
+- https://github.com/kritanjalijain/Clothing_Detection_YOLO?tab=readme-ov-file
+- https://github.com/Rabbit1010/Clothes-Recognition-and-Retrieval
+- https://github.com/normalclone/fashion-ai-analysis
+
+# Scene Recognition see:
+- https://github.com/shreyagu/Scene_Recognition
+- https://github.com/flytxtds/scene-recognition
+- https://github.com/vpulab/Semantic-Aware-Scene-Recognition
+
+# People and fecial Recognition see:
+- https://github.com/ageitgey/face_recognition
+- https://github.com/serengil/deepface
+- https://github.com/ITCoders/Human-detection-and-Tracking
+
+# Porn Human Action Recognition
+- https://github.com/ryanjay0/miles-deep
+- https://github.com/rlleshi/phar
+
+# Age and gender detection:
+- https://github.com/rlleshi/phar
+- https://github.com/Ebimsv/Facial_Age_estimation_PyTorch
+- https://github.com/Aayush3014/Gender-and-Age-Detection
+
+
 ## Project Structure
 ```bash
 VideoAIAnalyzer/

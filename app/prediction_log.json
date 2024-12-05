@@ -21408,9 +21408,9 @@
     "Stephanie_Lynn.jpg": {
         "true_label": 6461,
         "predictions": [
-            6421
+            6461
         ],
-        "is_correct": false
+        "is_correct": true
     },
     "Staci_Carr.jpg": {
         "true_label": 932,
