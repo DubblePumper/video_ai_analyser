@@ -254,7 +254,8 @@ def save_model_state(model, path):
 # Function to load the model state
 def load_model_state(model, path):
     if os.path.exists(path):
-        model.load_state_dict(torch.load(path))
+        map_location = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.load_state_dict(torch.load(path, map_location=map_location))
         model.train()
 
 # Trainen van het model
@@ -339,9 +340,11 @@ def train_model():
 
         # Bewaar de log data na elke epoch
         save_prediction_log(log_data)
+        print(f"Saved prediction log to {LOG_FILE_PATH}")
 
         # Bewaar het model na elke epoch
         save_model_state(model, MODEL_SAVE_PATH)
+        print(f"Saved model state to {MODEL_SAVE_PATH}")
 
         # Gradually increase the randomization phase
         if ENABLE_RANDOMIZATION and (epoch + 1) % (NUM_EPOCHS // 3) == 0:

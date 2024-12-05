@@ -1,21 +1,7 @@
-opencv-python-headless
 torch==2.5.1+cu124
 torchvision
 numpy>=1.22,<2.1
-moviepy
-numba==0.60.0  # Specify Numba 0.60.0 or above
-dlib
-librosa
-Pillow
-speechrecognition
-pydub
-textblob
-face_recognition
-cmake
-flask
-tensorflow
-pandas 
-scikit-learn
 facenet_pytorch
 torchaudio==2.5.1+cu124
 matplotlib
+pandas
