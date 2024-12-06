@@ -31,8 +31,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Paths
 CSV_PATH = os.path.join(SCRIPT_DIR, 'datasets', 'dataset.csv')
-IMG_DIR = os.path.join(SCRIPT_DIR, 'input_images')
-MODEL_SAVE_PATH = os.path.join(SCRIPT_DIR, 'saved_ai', 'person_recognition_model_vggface2.pth')
+IMG_DIR = os.path.join(SCRIPT_DIR, 'datasets', 'recognize_person')
+MODEL_SAVE_PATH = os.path.join(SCRIPT_DIR, 'ai_things', 'saved_ai', 'person_recognition_model_vggface2.pth')
 LOG_FILE_PATH = os.path.join(SCRIPT_DIR, 'prediction_log.json')
 os.makedirs(os.path.dirname(MODEL_SAVE_PATH), exist_ok=True)
 
