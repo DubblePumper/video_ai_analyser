@@ -14,6 +14,81 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)  # Dit is de map 'app'
 OUTPUT_DIR = os.path.join(BASE_DIR, 'datasets', 'pornstar_images')
 JSON_PATH = os.path.join(BASE_DIR, 'datasets', 'performers_data.json')
 
+def get_iafd_details(performer_name):
+    iafd_base_url = "https://www.iafd.com/results.asp?searchtype=comprehensive&searchstring="
+    search_url = iafd_base_url + performer_name.replace("_", " ").replace(" ", "+")
+    print(f"Searching IAFD for performer: {performer_name.replace('_', ' ')}")
+
+    try:           
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(search_url)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        performer_details = {}
+
+        # Check if no results are found
+        no_results = soup.find(string=lambda text: "No performers matched your search query." in text if text else False)
+        if no_results:
+            print(f"Performer not found on IAFD: {performer_name}")
+            return None
+
+        # Find the table that contains performer details
+        table = soup.find('table', id='tblMal', class_='table display table-responsive')
+        if not table:
+            print(f"No performer table found: {performer_name}")
+            return None
+
+        # Find the row with the performer link
+        row = table.find('a', href=lambda href: href and "/person.rme/" in href)
+        if row:
+            row = row.find_parent('td')  # Get the parent <td> that contains performer info
+        
+        if not row:
+            print(f"No performer row found: {performer_name}")
+            return None
+
+        # Extract performer details from the row
+        link = row.find('a')
+        if link and 'href' in link.attrs:
+            performer_details['iafd_profile_url'] = f"https://www.iafd.com{link['href']}"
+
+        # Extract other details like name, aka, start year, etc.
+        cells = row.find_all('td')
+        
+        if len(cells) > 0:
+            name_cell = cells[0]
+            if name_cell:
+                performer_details['iafd_name'] = name_cell.text.strip()
+
+        if len(cells) > 1:
+            aka_cell = cells[1]
+            if aka_cell:
+                performer_details['iafd_aka'] = aka_cell.text.strip()
+
+        if len(cells) > 2:
+            start_cell = cells[2]
+            if start_cell:
+                performer_details['start_year'] = start_cell.text.strip()
+
+        if len(cells) > 3:
+            end_cell = cells[3]
+            if end_cell:
+                performer_details['end_year'] = end_cell.text.strip()
+
+        if len(cells) > 4:
+            titles_cell = cells[4]
+            if titles_cell:
+                performer_details['titles'] = titles_cell.text.strip()
+
+        print(f"Retrieved IAFD details for {performer_name}: {performer_details}")
+        return performer_details
+
+    except Exception as e:
+        print(f"Error retrieving IAFD details for {performer_name}: {e}")
+        return None
+
 def get_pornhub_performers(max_performers=15000):
     performers = []
     base_url = "https://nl.pornhub.com/pornstars?performerType=pornstar&page="
@@ -55,15 +130,17 @@ def get_pornhub_performers(max_performers=15000):
                 continue
 
             if name_tag and img_tag and verified_tag:
-                # Extract the name text and remove extra nested tags
                 name = name_tag.get_text()
-                # Replace spaces with underscores and handle multiple parts of the name
                 formatted_name = "_".join(name.split())
-                
                 img_url = img_tag['data-thumb_url']
+
                 performer_data = {"name": formatted_name, "img_url": img_url}
-                
-                # Skip if performer already exists in the list based on name or image URL
+
+                # Haal IAFD-gegevens op en voeg toe als beschikbaar
+                iafd_details = get_iafd_details(formatted_name)
+                if iafd_details:
+                    performer_data.update(iafd_details)
+
                 if any(existing['name'] == formatted_name or existing['img_url'] == img_url for existing in performers):
                     print(f"Skipped duplicate performer (name or image): {formatted_name}")
                     continue
@@ -72,20 +149,17 @@ def get_pornhub_performers(max_performers=15000):
                 page_data.append(performer_data)
                 print(f"page: {page} | Added performer: {formatted_name}")
 
-                # Download and optimize the image immediately
                 save_path = os.path.join(OUTPUT_DIR, f"{formatted_name}.jpg")
                 download_and_optimize_image(img_url, save_path)
 
         if page_data:
             try:
-                # Save the page data immediately to the JSON file
                 if os.path.exists(JSON_PATH):
                     with open(JSON_PATH, 'r', encoding='utf-8') as json_file:
                         existing_data = json.load(json_file)
                 else:
                     existing_data = []
 
-                # Filter out any duplicates already in the existing data
                 for new_data in page_data:
                     if not any(existing['name'] == new_data['name'] or existing['img_url'] == new_data['img_url'] for existing in existing_data):
                         existing_data.append(new_data)
@@ -107,60 +181,36 @@ def get_pornhub_performers(max_performers=15000):
     return performers
 
 def download_and_optimize_image(url, save_path):
-    # Skip downloading if the image already exists
     if os.path.exists(save_path):
         print(f"Skipped downloading image, file already exists")
         return
 
     try:
-        print(f"Attempting to download image from {url}")  # Debug: print when downloading starts
+        print(f"Attempting to download image from {url}")
         scraper = cloudscraper.create_scraper()
         response = scraper.get(url, stream=True)
 
-        # Check if the response status code is OK (200)
         if response.status_code == 200:
             with open(save_path, 'wb') as out_file:
                 for chunk in response.iter_content(1024):
                     out_file.write(chunk)
 
-            # Now, optimize the image
             with Image.open(save_path) as img:
                 img = img.convert("RGB")
                 img.save(save_path, "JPEG", quality=85, optimize=True)
             print(f"Downloaded and optimized image")
         else:
             print(f"Failed to download image, status code: {response.status_code}")
-            print(f"Response content: {response.text[:200]}")  # Print part of the response for debugging
     except Exception as e:
         print(f"Error downloading image: {e}")
 
 def main():
     max_performers = 15000
-    performers = get_pornhub_performers(max_performers)
-
     if not os.path.exists(OUTPUT_DIR):
         print(f"Creating output directory: {OUTPUT_DIR}")
         os.makedirs(OUTPUT_DIR)
 
-    data = []
-
-    for performer in performers:
-        name = performer['name']
-        img_url = performer['img_url']
-        print(f"Processing performer: {name} with image")  # Debug: print performer info
-
-        save_path = os.path.join(OUTPUT_DIR, f"{name.replace(' ', '_')}.jpg")
-        download_and_optimize_image(img_url, save_path)
-
-        # Skip if performer already exists in data
-        if not any(existing['name'] == name or existing['img_url'] == img_url for existing in data):
-            data.append({"name": name, "img_url": img_url})
-        else:
-            print(f"Skipped duplicate performer (name or image) in final data: {name}")
-
-    # Writing all data to the JSON file at the end
-    with open(JSON_PATH, 'w', encoding='utf-8') as json_file:
-        json.dump(data, json_file, ensure_ascii=False, indent=4)
+    get_pornhub_performers(max_performers)
 
 if __name__ == '__main__':
     main()
