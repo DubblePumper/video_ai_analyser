@@ -5,6 +5,11 @@ import json
 import os
 import time
 from PIL import Image
+from dotenv import load_dotenv
+import urllib.parse
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Global variables for paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -14,92 +19,81 @@ BASE_DIR = os.path.dirname(SCRIPT_DIR)  # Dit is de map 'app'
 OUTPUT_DIR = os.path.join(BASE_DIR, 'datasets', 'pornstar_images')
 JSON_PATH = os.path.join(BASE_DIR, 'datasets', 'performers_data.json')
 
-def get_iafd_details(performer_name):
-    iafd_base_url = "https://www.iafd.com/results.asp?searchtype=comprehensive&searchstring="
-    search_url = iafd_base_url + performer_name.replace("_", " ").replace(" ", "+")
-    print(f"Searching IAFD for performer: {performer_name.replace('_', ' ')}")
+# Load API key from environment variable
+API_KEY = os.getenv("THEPORNDB_API_KEY")
 
-    try:           
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(search_url)
-        response.raise_for_status()
+def get_theporndb_details(performer_name, page=1, per_page=10, retries=5, delay=4):
+    encoded_name = urllib.parse.quote(performer_name)
+    encoded_name = encoded_name.replace("_", " ")
+    search_url = f"https://api.theporndb.net/performers?q={encoded_name}&page={page}&per_page={per_page}"
+    print(f"Searching ThePornDB for: {search_url}")
 
-        soup = BeautifulSoup(response.content, 'html.parser')
+    headers = {
+        "accept": "application/json",
+       "Authorization": f"Bearer {API_KEY}"
+    }
 
-        performer_details = {}
+    for attempt in range(retries):
+        try:
+            response = requests.get(search_url, headers=headers)
+            response.raise_for_status()
 
-        # Check if no results are found
-        no_results = soup.find(string=lambda text: "No performers matched your search query." in text if text else False)
-        if no_results:
-            print(f"Performer not found on IAFD: {performer_name}")
-            return None
+            data = response.json()
+            if not data or 'data' not in data or not data['data']:
+                print(f"Performer not found on ThePornDB: {performer_name}")
+                return None
 
-        # Find the table that contains performer details
-        table = soup.find('table', id='tblMal', class_='table display table-responsive')
-        if not table:
-            print(f"No performer table found: {performer_name}")
-            return None
+            performer_data = data['data'][0]
+            # Verzamel alle beschikbare afbeeldings-URL's van posters
+            posters = performer_data.get('posters', [])
+            image_urls = [poster['url'] for poster in posters] if posters else []
 
-        # Find the row with the performer link
-        row = table.find('a', href=lambda href: href and "/person.rme/" in href)
-        if row:
-            row = row.find_parent('td')  # Get the parent <td> that contains performer info
-        
-        if not row:
-            print(f"No performer row found: {performer_name}")
-            return None
+            performer_details = {
+                'id': performer_data.get('id', ''),
+                'slug': performer_data.get('slug', ''),
+                'name': performer_data.get('name', ''),
+                'bio': performer_data.get('bio', ''),
+                'rating': performer_data.get('rating', ''),
+                'gender': performer_data['extras'].get('gender', ''),
+                'birthday': performer_data['extras'].get('birthday', ''),
+                'birthplace': performer_data['extras'].get('birthplace', ''),
+                'ethnicity': performer_data['extras'].get('ethnicity', ''),
+                'nationality': performer_data['extras'].get('nationality', ''),
+                'hair_color': performer_data['extras'].get('hair_colour', ''),
+                'eye_color': performer_data['extras'].get('eye_colour', ''),
+                'height': performer_data['extras'].get('height', ''),
+                'weight': performer_data['extras'].get('weight', ''),
+                'measurements': performer_data['extras'].get('measurements', ''),
+                'cup_size': performer_data['extras'].get('cupsize', ''),
+                'tattoos': performer_data['extras'].get('tattoos', ''),
+                'piercings': performer_data['extras'].get('piercings', ''),
+                'image_urls': image_urls,  # Voeg alle afbeeldings-URL's toe
+                'links': performer_data['extras'].get('links', {})
+            }
+            return performer_details
 
-        # Extract performer details from the row
-        link = row.find('a')
-        if link and 'href' in link.attrs:
-            performer_details['iafd_profile_url'] = f"https://www.iafd.com{link['href']}"
+        except requests.exceptions.RequestException as e:
+            print(f"Error retrieving ThePornDB details for {performer_name}: {e}")
+            if attempt + 1 < retries:
+                print(f"Retrying {attempt + 1} out of {retries}...") 
+                time.sleep(delay)
+            else:
+                return None
 
-        # Extract other details like name, aka, start year, etc.
-        cells = row.find_all('td')
-        
-        if len(cells) > 0:
-            name_cell = cells[0]
-            if name_cell:
-                performer_details['iafd_name'] = name_cell.text.strip()
-
-        if len(cells) > 1:
-            aka_cell = cells[1]
-            if aka_cell:
-                performer_details['iafd_aka'] = aka_cell.text.strip()
-
-        if len(cells) > 2:
-            start_cell = cells[2]
-            if start_cell:
-                performer_details['start_year'] = start_cell.text.strip()
-
-        if len(cells) > 3:
-            end_cell = cells[3]
-            if end_cell:
-                performer_details['end_year'] = end_cell.text.strip()
-
-        if len(cells) > 4:
-            titles_cell = cells[4]
-            if titles_cell:
-                performer_details['titles'] = titles_cell.text.strip()
-
-        print(f"Retrieved IAFD details for {performer_name}: {performer_details}")
-        return performer_details
-
-    except Exception as e:
-        print(f"Error retrieving IAFD details for {performer_name}: {e}")
-        return None
-
-def get_pornhub_performers(max_performers=15000):
+def get_pornhub_performers(max_performers=15000000):
     performers = []
     base_url = "https://nl.pornhub.com/pornstars?performerType=pornstar&page="
     scraper = cloudscraper.create_scraper()
 
+    # Update de User-Agent naar een andere versie om de 403 te vermijden
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     }
 
     page = 1
     while len(performers) < max_performers:
+        print(f"--------------------------------------------------------")
+        print(f"pagina {page} / ? - performer ? / ?")
         url = f"{base_url}{page}"
         print(f"Scraping page {page}: {url}")
         try:
@@ -123,54 +117,38 @@ def get_pornhub_performers(max_performers=15000):
 
         for card in performer_cards:
             name_tag = card.find('span', class_='pornStarName performerCardName')
-            img_tag = card.find('img', attrs={'data-thumb_url': True})
-            verified_tag = card.find('span', class_='verifiedPornstar')
 
-            if img_tag and "default" in img_tag['data-thumb_url']:
-                continue
-
-            if name_tag and img_tag and verified_tag:
+            if name_tag:
                 name = name_tag.get_text()
                 formatted_name = "_".join(name.split())
-                img_url = img_tag['data-thumb_url']
 
-                performer_data = {"name": formatted_name, "img_url": img_url}
+                # Haal ThePornDB-gegevens op en voeg toe als beschikbaar
+                print(f"start zoeken in theporndb voor: {formatted_name}")
+                theporndb_details = get_theporndb_details(formatted_name)
+                if theporndb_details:
+                    print(f"performer {formatted_name} successvol gevonden op pornhub")
+                    performer_data = theporndb_details
 
-                # Haal IAFD-gegevens op en voeg toe als beschikbaar
-                iafd_details = get_iafd_details(formatted_name)
-                if iafd_details:
-                    performer_data.update(iafd_details)
+                    # Voeg performer toe aan lijst als niet dubbel
+                    if any(existing.get('theporndb_name') == formatted_name for existing in performers):
+                        print(f"Skipped duplicate performer: {formatted_name}")
+                        continue
 
-                if any(existing['name'] == formatted_name or existing['img_url'] == img_url for existing in performers):
-                    print(f"Skipped duplicate performer (name or image): {formatted_name}")
-                    continue
+                    performers.append(performer_data)
+                    page_data.append(performer_data)
+                    print(f"page: {page} | Added performer: {formatted_name}")
 
-                performers.append(performer_data)
-                page_data.append(performer_data)
-                print(f"page: {page} | Added performer: {formatted_name}")
+                    # Download en optimaliseer afbeelding van ThePornDB
+                    image_urls = performer_data.get('image_urls', [])
+                    if image_urls:
+                        save_path_base = os.path.join(OUTPUT_DIR, formatted_name)
+                        downloaded_image_paths = download_and_optimize_images(image_urls, save_path_base, performer_data)
 
-                save_path = os.path.join(OUTPUT_DIR, f"{formatted_name}.jpg")
-                download_and_optimize_image(img_url, save_path)
+                        # Update image_urls in the performer data met lokale paden
+                        performer_data['image_urls'] = downloaded_image_paths
 
-        if page_data:
-            try:
-                if os.path.exists(JSON_PATH):
-                    with open(JSON_PATH, 'r', encoding='utf-8') as json_file:
-                        existing_data = json.load(json_file)
-                else:
-                    existing_data = []
-
-                for new_data in page_data:
-                    if not any(existing['name'] == new_data['name'] or existing['img_url'] == new_data['img_url'] for existing in existing_data):
-                        existing_data.append(new_data)
-
-                with open(JSON_PATH, 'w', encoding='utf-8') as json_file:
-                    json.dump(existing_data, json_file, ensure_ascii=False, indent=4)
-                print(f"Updated data for page {page}")
-                print(f"Total performers: {len(performers)}")
-                print(f"------------------------------------------------------------------------------")
-            except IOError as e:
-                print(f"Error saving JSON file for page {page}: {e}")
+                    # Write the performer data to the JSON file immediately after adding
+                    write_to_json(performer_data)
 
         if len(performers) >= max_performers:
             break
@@ -180,32 +158,86 @@ def get_pornhub_performers(max_performers=15000):
 
     return performers
 
-def download_and_optimize_image(url, save_path):
-    if os.path.exists(save_path):
-        print(f"Skipped downloading image, file already exists")
-        return
+def download_and_optimize_images(urls, save_path_base, performer_data):
+    if not urls:
+        print(f"No images to download for {performer_data['name']}")
+        return []
 
+    # Maak de map voor de performer als deze nog niet bestaat
+    performer_folder = save_path_base
+    if not os.path.exists(performer_folder):
+        os.makedirs(performer_folder)
+
+    downloaded_paths = []
+
+    for index, url in enumerate(urls):
+        save_path = os.path.join(performer_folder, f"{performer_data['name']}_{index + 1}.jpg")
+        if os.path.exists(save_path):
+            print(f"Skipped downloading image, file already exists: {save_path}")
+            downloaded_paths.append(save_path)
+            continue
+
+        try:
+            print(f"Attempting to download image from {url}")
+            scraper = cloudscraper.create_scraper()
+            response = scraper.get(url, stream=True)
+
+            if response.status_code == 200:
+                with open(save_path, 'wb') as out_file:
+                    for chunk in response.iter_content(1024):
+                        out_file.write(chunk)
+
+                with Image.open(save_path) as img:
+                    img = img.convert("RGB")
+                    img.save(save_path, "JPEG", quality=85, optimize=True)
+                print(f"Downloaded and optimized image: {save_path}")
+                downloaded_paths.append(save_path)
+            else:
+                print(f"Failed to download image, status code: {response.status_code}")
+
+        except Exception as e:
+            print(f"Error downloading image: {e}")
+            downloaded_paths.append(None)
+
+    return downloaded_paths
+
+def write_to_json(performer_data):
     try:
-        print(f"Attempting to download image from {url}")
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(url, stream=True)
+        performer_name = performer_data.get('name', None)
+        if not performer_name:
+            print(f"Performer name is missing for {performer_data}. Skipping.")
+            return
 
-        if response.status_code == 200:
-            with open(save_path, 'wb') as out_file:
-                for chunk in response.iter_content(1024):
-                    out_file.write(chunk)
-
-            with Image.open(save_path) as img:
-                img = img.convert("RGB")
-                img.save(save_path, "JPEG", quality=85, optimize=True)
-            print(f"Downloaded and optimized image")
+        print(f"Writing performer: {performer_name}")
+        if os.path.exists(JSON_PATH):
+            with open(JSON_PATH, 'r', encoding='utf-8') as json_file:
+                existing_data = json.load(json_file)
         else:
-            print(f"Failed to download image, status code: {response.status_code}")
+            existing_data = []
+
+        # Voeg nieuwe data toe als performer nog niet bestaat
+        if isinstance(existing_data, list):
+            if performer_name not in [existing.get('name') for existing in existing_data]:
+                existing_data.append(performer_data)
+            else:
+                for existing_performer in existing_data:
+                    if existing_performer['name'] == performer_name:
+                        existing_performer.update(performer_data)
+                        break
+
+        # Schrijf de data naar de JSON file
+        with open(JSON_PATH, 'w', encoding='utf-8') as json_file:
+            json.dump(existing_data, json_file, ensure_ascii=False, indent=4)
+
+        print(f"Data voor {performer_name} is succesvol weggeschreven.")
+
+    except KeyError as e:
+        print(f"KeyError: {e} - 'name' ontbreekt in performer data.")
     except Exception as e:
-        print(f"Error downloading image: {e}")
+        print(f"Fout bij het wegschrijven naar JSON: {e}")
 
 def main():
-    max_performers = 15000
+    max_performers = 1500000
     if not os.path.exists(OUTPUT_DIR):
         print(f"Creating output directory: {OUTPUT_DIR}")
         os.makedirs(OUTPUT_DIR)
