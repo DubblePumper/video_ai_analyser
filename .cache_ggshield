@@ -1,1 +1,1 @@
-{"last_found_secrets": [{"match": "44bae9d3bd73c3c67d933ae1dec70b9fe1aa7e35a14aef17e4524e2536a87c1e", "name": "Bearer Token - f:\\video_ai_analyser\\app\\get_data\\scrape_pornstars.py"}]}
+{"last_found_secrets": [{"name": "Generic High Entropy Secret - f:\\video_ai_analyser\\app\\.env", "match": "4b6911d1d2738412e55459c68b88932ce73884efbe73735b047092b0b40c4c4c"}]}
